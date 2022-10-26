@@ -7,11 +7,10 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
 )
 
 func main() {
-
-	//서버에 연결
 	port := ":8080"
 	conn, err := net.Dial("tcp", port)
 	if err != nil {
@@ -21,7 +20,12 @@ func main() {
 
 	defer conn.Close()
 
-	//사용자로부터 입력값 받기
+	ch := make(chan string)
+	go handleReciveMsg(conn, ch)
+	handleSendMsg(conn)
+}
+
+func handleSendMsg(conn net.Conn) {
 	for {
 		reader := bufio.NewReader(os.Stdin)
 		fmt.Print(">> ")
@@ -30,20 +34,31 @@ func main() {
 			fmt.Println(err)
 			return
 		}
-		fmt.Fprintf(conn, text+"\n")
-		//fmt.Fprintf(conn, "hello \n")
-
-		message, err := bufio.NewReader(conn).ReadString('\n')
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		fmt.Print("->: " + message)
+		fmt.Fprintf(conn, "%s", text+"\n")
 
 		if strings.TrimSpace(string(text)) == "STOP" {
 			fmt.Println("TCP client exiting..!")
+			conn.Close()
 			return
 		}
 	}
+}
 
+func handleReciveMsg(conn net.Conn, ch chan string) {
+	for {
+		select {
+		case message := <-ch:
+			fmt.Printf("from another user : %s\n", message)
+		default:
+			go func(net.Conn, chan string) {
+				message, err := bufio.NewReader(conn).ReadString('\n')
+				if err != nil {
+					fmt.Println(err)
+					return
+				}
+				ch <- message
+			}(conn, ch)
+			time.Sleep(1000 * time.Millisecond)
+		}
+	}
 }
